@@ -30,9 +30,10 @@ public class PlSql2JavaTranslator {
 
             ProcedureExtractor extractor = new ProcedureExtractor();
             List<Procedure> procedures = extractor.extract(tree);
-            System.out.println("Found these procedures in PL/SQL file " + arg + ":");
+            System.out.println("PL/SQL file " + arg + ":");
+            ProcedureEmitter emitter = new ProcedureEmitter("my_pkg", ".");
             for (Procedure proc : procedures) {
-                System.out.println("  " + proc.getName());
+                emitter.emit(proc);
             }
         }
     }

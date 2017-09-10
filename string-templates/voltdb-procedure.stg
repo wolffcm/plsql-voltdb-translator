@@ -9,10 +9,17 @@ package <package>;
 <class_def>
 >>
 
-class_def(name, members) ::= <<
+class_def(name, sql_stmts, methods) ::= <<
 public class <name> extends VoltProcedure {
-    <members; separator="\n">
+
+    <sql_stmts; separator="\n">
+
+    <methods; separator="\n">
 }
+>>
+
+sql_stmt(name, sql_text) ::= <<
+public final SQLStmt <name> = "<sql_text>";
 >>
 
 run_method(ret_type, args, stmts) ::= <<
@@ -23,6 +30,14 @@ slist(stmts) ::= <<
 {
     <stmts; separator="\n">
 }
+>>
+
+queue_sql_stmt(stmt_name) ::= <<
+voltQueueSql(<stmt_name>);
+>>
+
+execute_sql_stmt(variable_name) ::= <<
+VoltTable <variable_name>[] = voltExecuteSQL();
 >>
 
 null_stmt() ::= <<

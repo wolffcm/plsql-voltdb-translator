@@ -4,7 +4,9 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 import java.util.Stack;
+import java.util.TreeMap;
 
 import org.antlr.v4.runtime.tree.ParseTree;
 import org.antlr.v4.runtime.tree.ParseTreeWalker;
@@ -16,6 +18,7 @@ import plsql_parser.PlSqlParser.Create_procedure_bodyContext;
 import plsql_parser.PlSqlParser.Null_statementContext;
 import plsql_parser.PlSqlParser.ParameterContext;
 import plsql_parser.PlSqlParser.Seq_of_statementsContext;
+import plsql_parser.PlSqlParser.Sql_statementContext;
 import plsql_parser.PlSqlParserBaseListener;
 
 public class ProcedureEmitter {
@@ -40,10 +43,25 @@ public class ProcedureEmitter {
 
     private class EmittingListener extends PlSqlParserBaseListener {
         Stack<List<ST>> m_stmtBlockStack = new Stack<>();
+        Map<String, String> m_sqlStmts = new TreeMap<>();
 
         @Override
         public void enterCreate_procedure_body(Create_procedure_bodyContext ctx) {
             m_stmtBlockStack.push(new ArrayList<>());
+        }
+
+        @Override
+        public void exitSql_statement(Sql_statementContext ctx) {
+            String stmtName = "sql" + m_sqlStmts.size();
+            m_sqlStmts.put(stmtName, ctx.getText());
+
+            ST queueSql = m_templateGroup.getInstanceOf("queue_sql_stmt");
+            queueSql.add("stmt_name", stmtName);
+            m_stmtBlockStack.peek().add(queueSql);
+
+            ST execSql = m_templateGroup.getInstanceOf("execute_sql_stmt");
+            execSql.add("variable_name", "vt");
+            m_stmtBlockStack.peek().add(execSql);
         }
 
         @Override
@@ -72,13 +90,15 @@ public class ProcedureEmitter {
                     "/**\n"
                     + " * " + className + ".java\n"
                     + " *\n"
-                    + " * Generated from PL/SQL code by plsqltranslator on " + getTimeString() + "\n"
+                    + " * Generated from PL/SQL code\n"
+                    + " * by plsqltranslator\n"
+                    + " * on " + getTimeString() + "\n"
                     + " */");
             srcFile.add("package", m_package);
             srcFile.add("imported_pkgs", PACKAGES);
 
             ST classDef = m_templateGroup.getInstanceOf("class_def");
-            classDef.add("name", ctx.procedure_name().getText());
+            classDef.add("name", className);
 
             ST runMethod = m_templateGroup.getInstanceOf("run_method");
             runMethod.add("ret_type", "long");
@@ -91,10 +111,18 @@ public class ProcedureEmitter {
             assert(m_stmtBlockStack.size() == 1);
             runMethod.add("stmts", m_stmtBlockStack.pop());
 
-            classDef.add("members", runMethod);
+            for (Map.Entry<String, String> mapEntry : m_sqlStmts.entrySet()) {
+                ST sqlStmtST = m_templateGroup.getInstanceOf("sql_stmt");
+                sqlStmtST.add("name", mapEntry.getKey());
+                sqlStmtST.add("sql_text", mapEntry.getValue());
+                classDef.add("sql_stmts", sqlStmtST);
+            }
+
+            classDef.add("methods", runMethod);
 
             srcFile.add("class_def", classDef);
-            System.out.println("--------");
+            System.out.println("-------- " + m_targetDirectory + "/"
+                    + m_package + "/" + className + ".java");
             System.out.println(srcFile.render());
         }
 

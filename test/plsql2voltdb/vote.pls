@@ -4,4 +4,17 @@ CREATE PROCEDURE Vote (phone_number               IN INTEGER,
 AS
 BEGIN
   NULL;
+  BEGIN
+      NULL;
+  END;
+  NULL;
+  BEGIN
+      NULL;
+      NULL;
+      BEGIN
+          NULL;
+      END;
+      NULL;
+  END;
+  NULL;
 END;

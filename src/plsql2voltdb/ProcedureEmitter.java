@@ -13,13 +13,12 @@ public class ProcedureEmitter {
     }
 
     public void emit(Procedure proc) {
-        System.out.println("in emit, pwd: " + System.getProperty("user.dir"));
-
         STGroupFile group = new STGroupFile("string-templates/java-procedure.stg");
 
         ST st = group.getInstanceOf("procedure");
-        st.add("name", proc.getName());
+        st.add("plsql_proc", proc);
         st.add("package", m_package);
+
         String procedureSource = st.render();
         System.out.println(procedureSource);
     }

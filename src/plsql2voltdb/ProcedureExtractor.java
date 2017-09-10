@@ -20,7 +20,7 @@ public class ProcedureExtractor {
 
         @Override
         public void exitCreate_procedure_body(PlSqlParser.Create_procedure_bodyContext ctx) {
-            m_procedures.add(new Procedure(ctx.procedure_name().getText()));
+            m_procedures.add(new Procedure(ctx));
         }
     }
 

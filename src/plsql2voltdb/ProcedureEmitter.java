@@ -26,7 +26,7 @@ public class ProcedureEmitter {
 
     private final String m_package;
     private final String m_targetDirectory;
-    private final STGroupFile m_templateGroup = new STGroupFile("string-templates/java-procedure.stg");
+    private final STGroupFile m_templateGroup = new STGroupFile("string-templates/voltdb-procedure.stg");
 
     public ProcedureEmitter(String targetDirectory, String packageName) {
         m_package = packageName;

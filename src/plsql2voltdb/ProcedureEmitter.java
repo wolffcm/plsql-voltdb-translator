@@ -14,19 +14,15 @@ import org.stringtemplate.v4.ST;
 import org.stringtemplate.v4.STGroupFile;
 
 import plsql_parser.PlSqlParser;
+import plsql_parser.PlSqlParser.Assignment_statementContext;
+import plsql_parser.PlSqlParser.BodyContext;
 import plsql_parser.PlSqlParser.Create_procedure_bodyContext;
-import plsql_parser.PlSqlParser.Null_statementContext;
 import plsql_parser.PlSqlParser.ParameterContext;
-import plsql_parser.PlSqlParser.Seq_of_statementsContext;
+import plsql_parser.PlSqlParser.Return_statementContext;
 import plsql_parser.PlSqlParser.Sql_statementContext;
 import plsql_parser.PlSqlParserBaseListener;
 
 public class ProcedureEmitter {
-    private static final String[] PACKAGES = {
-            "org.voltdb.VoltProcedure",
-            "org.voltdb.VoltTable"
-    };
-
     private final String m_package;
     private final String m_targetDirectory;
     private final STGroupFile m_templateGroup = new STGroupFile("string-templates/voltdb-procedure.stg");
@@ -42,12 +38,31 @@ public class ProcedureEmitter {
     }
 
     private class EmittingListener extends PlSqlParserBaseListener {
+        List<ParameterContext> m_parameters = new ArrayList<>();
         Stack<List<ST>> m_stmtBlockStack = new Stack<>();
         Map<String, String> m_sqlStmts = new TreeMap<>();
+
+        String getOutputParameterName() {
+            String name = null;
+            for (ParameterContext param : m_parameters) {
+                if (! param.OUT().isEmpty()) {
+                    assert(name == null);
+                    name = param.parameter_name().getText();
+                }
+            }
+
+            assert (name != null);
+            return name;
+        }
 
         @Override
         public void enterCreate_procedure_body(Create_procedure_bodyContext ctx) {
             m_stmtBlockStack.push(new ArrayList<>());
+        }
+
+        @Override
+        public void exitParameter(ParameterContext ctx) {
+            m_parameters.add(ctx);
         }
 
         @Override
@@ -65,21 +80,31 @@ public class ProcedureEmitter {
         }
 
         @Override
-        public void enterSeq_of_statements(Seq_of_statementsContext ctx) {
+        public void exitAssignment_statement(Assignment_statementContext ctx) {
+            ST assignStmt = m_templateGroup.getInstanceOf("assignment_stmt");
+            assignStmt.add("lhs", ctx.general_element().getText());
+            assignStmt.add("rhs", ctx.expression().getText());
+            m_stmtBlockStack.peek().add(assignStmt);
+        }
+
+        @Override
+        public void exitReturn_statement(Return_statementContext ctx) {
+            ST returnStmt = m_templateGroup.getInstanceOf("return_stmt");
+            returnStmt.add("ret_val", getOutputParameterName());
+            m_stmtBlockStack.peek().add(returnStmt);
+        }
+
+        @Override
+        public void enterBody(BodyContext ctx) {
             m_stmtBlockStack.push(new ArrayList<>());
         }
 
         @Override
-        public void exitSeq_of_statements(Seq_of_statementsContext ctx) {
+        public void exitBody(BodyContext ctx) {
             List<ST> stmts = m_stmtBlockStack.pop();
             ST slist = m_templateGroup.getInstanceOf("slist");
             slist.add("stmts", stmts);
             m_stmtBlockStack.peek().add(slist);
-        }
-
-        @Override
-        public void exitNull_statement(Null_statementContext ctx) {
-            m_stmtBlockStack.peek().add(m_templateGroup.getInstanceOf("null_stmt"));
         }
 
         @Override
@@ -95,7 +120,6 @@ public class ProcedureEmitter {
                     + " * on " + getTimeString() + "\n"
                     + " */");
             srcFile.add("package", m_package);
-            srcFile.add("imported_pkgs", PACKAGES);
 
             ST classDef = m_templateGroup.getInstanceOf("class_def");
             classDef.add("name", className);
@@ -109,7 +133,15 @@ public class ProcedureEmitter {
             }
 
             assert(m_stmtBlockStack.size() == 1);
-            runMethod.add("stmts", m_stmtBlockStack.pop());
+            List<ST> methodStmts = m_stmtBlockStack.pop();
+            assert(methodStmts.size() == 1); // should be just one stmt list
+
+            // Add the final return statement
+            ST returnStmt = m_templateGroup.getInstanceOf("return_stmt");
+            returnStmt.add("ret_val", getOutputParameterName());
+            methodStmts.get(0).add("stmts", returnStmt);
+
+            runMethod.add("stmts", methodStmts);
 
             for (Map.Entry<String, String> mapEntry : m_sqlStmts.entrySet()) {
                 ST sqlStmtST = m_templateGroup.getInstanceOf("sql_stmt");

@@ -4,8 +4,12 @@ src_file(header_comment, package, imported_pkgs, class_def) ::= <<
 
 package <package>;
 
-<imported_pkgs: {pkg | import <pkg>;}; separator="\n">
+import org.voltdb.SQLStmt;
+import org.voltdb.VoltProcedure;
+import org.voltdb.VoltTable;
 
+<if(imported_pkgs)><imported_pkgs: {pkg | import <pkg>;}; separator="\n">
+<endif>
 <class_def>
 >>
 
@@ -40,6 +44,16 @@ execute_sql_stmt(variable_name) ::= <<
 VoltTable <variable_name>[] = voltExecuteSQL();
 >>
 
-null_stmt() ::= <<
-null;
+assignment_stmt(lhs, rhs) ::= <<
+<lhs> = <rhs>;
+>>
+
+return_stmt(ret_val) ::= <<
+return <ret_val>;
+>>
+
+if_stmt(cond, then_block) ::= <<
+if (<cond>) {
+    then_block
+}
 >>

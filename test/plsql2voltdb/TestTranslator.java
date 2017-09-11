@@ -8,5 +8,4 @@ public class TestTranslator {
     public void testBasic() {
         PlSql2JavaTranslator.main(new String[] {"test/plsql2voltdb/vote.pls"});
     }
-
 }

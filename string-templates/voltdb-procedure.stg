@@ -53,7 +53,6 @@ return <ret_val>;
 >>
 
 if_stmt(cond, then_block) ::= <<
-if (<cond>) {
-    then_block
-}
+if (<cond>) <then_block>
+
 >>

@@ -8,17 +8,21 @@ import java.util.Map;
 import java.util.Stack;
 import java.util.TreeMap;
 
+import org.antlr.v4.runtime.TokenStream;
 import org.antlr.v4.runtime.tree.ParseTree;
 import org.antlr.v4.runtime.tree.ParseTreeWalker;
 import org.stringtemplate.v4.ST;
 import org.stringtemplate.v4.STGroupFile;
 
+import plsql2voltdb.SqlAnalyzer.AnalyzedSqlStmt;
 import plsql_parser.PlSqlParser;
 import plsql_parser.PlSqlParser.Assignment_statementContext;
 import plsql_parser.PlSqlParser.BodyContext;
 import plsql_parser.PlSqlParser.Create_procedure_bodyContext;
+import plsql_parser.PlSqlParser.If_statementContext;
 import plsql_parser.PlSqlParser.ParameterContext;
 import plsql_parser.PlSqlParser.Return_statementContext;
+import plsql_parser.PlSqlParser.Seq_of_statementsContext;
 import plsql_parser.PlSqlParser.Sql_statementContext;
 import plsql_parser.PlSqlParserBaseListener;
 
@@ -26,10 +30,12 @@ public class ProcedureEmitter {
     private final String m_package;
     private final String m_targetDirectory;
     private final STGroupFile m_templateGroup = new STGroupFile("string-templates/voltdb-procedure.stg");
+    private final TokenStream m_tokenStream;
 
-    public ProcedureEmitter(String targetDirectory, String packageName) {
+    public ProcedureEmitter(String targetDirectory, String packageName, TokenStream tokenStream) {
         m_package = packageName;
         m_targetDirectory = targetDirectory;
+        m_tokenStream = tokenStream;
     }
 
     private static String getTimeString() {
@@ -70,6 +76,8 @@ public class ProcedureEmitter {
             String stmtName = "sql" + m_sqlStmts.size();
             m_sqlStmts.put(stmtName, ctx.getText());
 
+            AnalyzedSqlStmt analyzedStmt = SqlAnalyzer.analyze(m_tokenStream, ctx);
+
             ST queueSql = m_templateGroup.getInstanceOf("queue_sql_stmt");
             queueSql.add("stmt_name", stmtName);
             m_stmtBlockStack.peek().add(queueSql);
@@ -95,7 +103,7 @@ public class ProcedureEmitter {
         }
 
         @Override
-        public void enterBody(BodyContext ctx) {
+        public void enterSeq_of_statements(Seq_of_statementsContext ctx) {
             m_stmtBlockStack.push(new ArrayList<>());
         }
 
@@ -105,6 +113,21 @@ public class ProcedureEmitter {
             ST slist = m_templateGroup.getInstanceOf("slist");
             slist.add("stmts", stmts);
             m_stmtBlockStack.peek().add(slist);
+        }
+
+
+        @Override
+        public void exitIf_statement(If_statementContext ctx) {
+            // For an if statement, get the seq_of_statements
+            List<ST> thenStmts = m_stmtBlockStack.pop();
+            ST stmtList = m_templateGroup.getInstanceOf("slist");
+            stmtList.add("stmts", thenStmts);
+
+            ST ifStmt = m_templateGroup.getInstanceOf("if_stmt");
+            String cond = ExpressionFormatter.format(ctx.condition().expression());
+            ifStmt.add("cond", cond);
+            ifStmt.add("then_block", stmtList);
+            m_stmtBlockStack.peek().add(ifStmt);
         }
 
         @Override

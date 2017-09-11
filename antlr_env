@@ -1,0 +1,5 @@
+CLASSPATH=`pwd`/lib/antlr-4.7-complete.jar:${CLASSPATH}
+export CLASSPATH
+
+alias antlr4='java -jar antlr-4.7-complete.jar'
+alias grun='java org.antlr.v4.gui.TestRig'

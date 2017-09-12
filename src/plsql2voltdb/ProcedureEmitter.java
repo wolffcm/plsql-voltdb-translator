@@ -3,10 +3,9 @@ package plsql2voltdb;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
-import java.util.HashSet;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.Stack;
 import java.util.TreeMap;
 
@@ -47,14 +46,45 @@ public class ProcedureEmitter {
     }
 
     private class EmittingListener extends PlSqlParserBaseListener {
-        private List<ParameterContext> m_inputParameters = new ArrayList<>();
-        private ParameterContext m_outputParameter = null;
         private Map<String, String> m_sqlStmts = new TreeMap<>();
 
+        private List<ParameterContext> m_inputParameters = new ArrayList<>();
+        private ParameterContext m_outputParameter = null;
         private List<Variable_declarationContext> m_constants = new ArrayList<>();
         private List<Variable_declarationContext> m_localVariables = new ArrayList<>();
+        private List<Var> m_loopScopeVars = new ArrayList<>();
 
         private Stack<List<ST>> m_stmtBlockStack = new Stack<>();
+
+        // Could memo-ize this at some point...
+        private Map<String, Var> getVisibleVariables() {
+            Map<String, Var> vars = new HashMap<>();
+
+            for (ParameterContext paramCtx : m_inputParameters) {
+                Var v = Var.fromPlSql(paramCtx);
+                vars.put(v.getName(), v);
+            }
+
+            Var outputVar = Var.fromPlSql(m_outputParameter);
+            vars.put(outputVar.getName(), outputVar);
+
+            for (Variable_declarationContext varCtx : m_constants) {
+                Var v = Var.fromPlSql(varCtx);
+                vars.put(v.getName(), v);
+            }
+
+            for (Variable_declarationContext varCtx : m_localVariables) {
+                Var v = Var.fromPlSql(varCtx);
+                vars.put(v.getName(), v);
+            }
+
+            for (Var v : m_loopScopeVars) {
+                vars.put(v.getName(), v);
+            }
+
+            return vars;
+        }
+
 
 
         String getOutputParameterName() {
@@ -84,29 +114,9 @@ public class ProcedureEmitter {
             }
         }
 
-        // Could memo-ize this at some point...
-        private Set<String> getVisibleVariables() {
-            Set<String> vars = new HashSet<>();
-
-            for (ParameterContext paramCtx : m_inputParameters) {
-                vars.add(paramCtx.parameter_name().getText());
-            }
-
-            vars.add(m_outputParameter.parameter_name().getText());
-
-            for (Variable_declarationContext varCtx : m_constants) {
-                vars.add(varCtx.identifier().getText());
-            }
-
-            for (Variable_declarationContext varCtx : m_localVariables) {
-                vars.add(varCtx.identifier().getText());
-            }
-
-            return vars;
-        }
-
         @Override
         public void exitSql_statement(Sql_statementContext ctx) {
+            Map<String, Var> visibleVars = getVisibleVariables();
             AnalyzedSqlStmt analyzedStmt = SqlAnalyzer.analyze(m_tokenStream, getVisibleVariables(), ctx);
 
             String stmtName = "sql" + m_sqlStmts.size();
@@ -125,8 +135,6 @@ public class ProcedureEmitter {
 
             // Now assign the result of the SQL execution to the variables.
             if (analyzedStmt.getOutputParams().size() > 0) {
-                // TODO: optimize to a simple "asScalarLong()"
-                // if only one output of integral type.
                 ST advance = m_templateGroup.getInstanceOf("freeform_line");
                 advance.add("text", "vt.advanceRow();");
                 m_stmtBlockStack.peek().add(advance);
@@ -134,19 +142,32 @@ public class ProcedureEmitter {
                 for (String var : analyzedStmt.getOutputParams()) {
                     ST assign = m_templateGroup.getInstanceOf("assignment_stmt");
                     assign.add("lhs", var);
-                    // TODO: create the right getter method based on type.
-                    assign.add("rhs", "vt.getLong(" + i + ")");
+                    String voltTableAccessor = getVoltTableAccessor(visibleVars, var);
+                    assert (voltTableAccessor != null);
+                    assign.add("rhs", "vt." + voltTableAccessor + "(" + i + ")");
                     m_stmtBlockStack.peek().add(assign);
                     ++i;
                 }
             }
         }
 
+        private String getVoltTableAccessor(Map<String, Var> visibleVars, String var) {
+            String javaType = visibleVars.get(var).getJavaType();
+            String accessor = null;
+            if ("long".equals(javaType)) {
+                accessor = "getLong";
+            }
+            if ("String".equals(javaType)) {
+                accessor = "getString";
+            }
+            return accessor;
+        }
+
         @Override
         public void exitAssignment_statement(Assignment_statementContext ctx) {
             ST assignStmt = m_templateGroup.getInstanceOf("assignment_stmt");
             assignStmt.add("lhs", ctx.general_element().getText());
-            assignStmt.add("rhs", ctx.expression().getText());
+            assignStmt.add("rhs", ExpressionFormatter.format(m_tokenStream, getVisibleVariables(), ctx.expression()));
             m_stmtBlockStack.peek().add(assignStmt);
         }
 
@@ -170,10 +191,25 @@ public class ProcedureEmitter {
             stmtList.add("stmts", thenStmts);
 
             ST ifStmt = m_templateGroup.getInstanceOf("if_stmt");
-            String cond = ExpressionFormatter.format(m_tokenStream, ctx.condition().expression());
+            String cond = ExpressionFormatter.format(m_tokenStream, getVisibleVariables(), ctx.condition().expression());
             ifStmt.add("cond", cond);
             ifStmt.add("then_block", stmtList);
             m_stmtBlockStack.peek().add(ifStmt);
+        }
+
+        @Override
+        public void enterLoop_statement(Loop_statementContext ctx) {
+            Cursor_loop_paramContext cursorLoopParam = ctx.cursor_loop_param();
+            assert(cursorLoopParam != null);
+
+            String rowVarName = cursorLoopParam.record_name().getText();
+
+            // Add the row variable to the visible variables
+            // So we can format expressions:
+            //   rowVar.field
+            // to
+            //   rowVar.getString("field")
+            m_loopScopeVars.add(Var.fromJava("VoltTable", rowVarName));
         }
 
         @Override
@@ -227,6 +263,8 @@ public class ProcedureEmitter {
             whileStmt.add("cond", rowVarName + "." + "advanceRow()");
             whileStmt.add("body", stmtList);
             m_stmtBlockStack.peek().add(whileStmt);
+
+            m_loopScopeVars.add(Var.fromJava("VoltTable", rowVarName));
         }
 
         private ST getVarDeclST(Variable_declarationContext varDeclCtx) {
@@ -235,7 +273,7 @@ public class ProcedureEmitter {
             varDecl.add("var_name", varDeclCtx.identifier().getText());
 
             if (varDeclCtx.default_value_part() != null) {
-                varDecl.add("init", ExpressionFormatter.format(m_tokenStream, varDeclCtx.default_value_part().expression()));
+                varDecl.add("init", ExpressionFormatter.format(m_tokenStream, getVisibleVariables(), varDeclCtx.default_value_part().expression()));
             }
 
             if (varDeclCtx.CONSTANT() != null) {

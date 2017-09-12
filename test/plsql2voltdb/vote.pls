@@ -4,7 +4,6 @@ CREATE PROCEDURE Vote (phone_number_in               IN  INTEGER,
                        return_code_out               OUT INTEGER)
 AS
 DECLARE
-
     -- Error codes
     VOTE_SUCCESSFUL            CONSTANT INTEGER := 0;
     ERR_INVALID_CONTESTANT     CONSTANT INTEGER := 1;
@@ -37,7 +36,7 @@ BEGIN
     -- Find the state of the voter based on area code
     FOR state_row IN
         ( SELECT state FROM area_code_state
-          WHERE area_code = (phone_number_in / 10000000) )
+          WHERE area_code = FLOOR(phone_number_in / 10000000) )
     LOOP
         state_abbrev := state_row.state;
     END LOOP;

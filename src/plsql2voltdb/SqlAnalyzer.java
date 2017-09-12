@@ -2,7 +2,7 @@ package plsql2voltdb;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
+import java.util.Map;
 
 import org.antlr.v4.runtime.ParserRuleContext;
 import org.antlr.v4.runtime.TokenStream;
@@ -45,9 +45,9 @@ public class SqlAnalyzer {
         private final TokenStreamRewriter m_rewriter;
         private final List<String> m_outputVariables = new ArrayList<>();
         private final List<String> m_inputVariables = new ArrayList<>();
-        private final Set<String> m_visibleVariables;
+        private final Map<String, Var> m_visibleVariables;
 
-        SqlAnalyzingListener(TokenStreamRewriter tokenStreamRewriter, Set<String> visibleVariables) {
+        SqlAnalyzingListener(TokenStreamRewriter tokenStreamRewriter, Map<String, Var> visibleVariables) {
             m_rewriter = tokenStreamRewriter;
             m_visibleVariables = visibleVariables;
         }
@@ -67,7 +67,7 @@ public class SqlAnalyzer {
         public void exitGeneral_element(General_elementContext ctx) {
             if (ctx.general_element_part().size() == 1) {
                 String id = ctx.getText();
-                if (m_visibleVariables.contains(id)) {
+                if (m_visibleVariables.containsKey(id)) {
                     m_rewriter.replace(ctx.getStart(), ctx.getStop(), "?");
                     m_inputVariables.add(id);
                 }
@@ -106,7 +106,7 @@ public class SqlAnalyzer {
         return String.join("\n", stringLines);
     }
 
-    public static AnalyzedSqlStmt analyze(TokenStream tokenStream, Set<String> visibleVariables, ParserRuleContext sqlStmtCtx) {
+    public static AnalyzedSqlStmt analyze(TokenStream tokenStream, Map<String, Var> visibleVariables, ParserRuleContext sqlStmtCtx) {
         ParseTreeWalker walker = new ParseTreeWalker();
         TokenStreamRewriter rewriter = new TokenStreamRewriter(tokenStream);
         SqlAnalyzingListener listener = new SqlAnalyzingListener(rewriter, visibleVariables);

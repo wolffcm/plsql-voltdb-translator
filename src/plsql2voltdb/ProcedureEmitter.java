@@ -1,12 +1,12 @@
 package plsql2voltdb;
 
 import java.text.SimpleDateFormat;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Date;
-import java.util.Deque;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.Stack;
 import java.util.TreeMap;
 
@@ -19,8 +19,6 @@ import org.stringtemplate.v4.STGroupFile;
 import plsql2voltdb.SqlAnalyzer.AnalyzedSqlStmt;
 import plsql_parser.PlSqlParser;
 import plsql_parser.PlSqlParser.Assignment_statementContext;
-import plsql_parser.PlSqlParser.BodyContext;
-import plsql_parser.PlSqlParser.Create_procedure_bodyContext;
 import plsql_parser.PlSqlParser.If_statementContext;
 import plsql_parser.PlSqlParser.ParameterContext;
 import plsql_parser.PlSqlParser.Return_statementContext;
@@ -47,23 +45,18 @@ public class ProcedureEmitter {
     }
 
     private class EmittingListener extends PlSqlParserBaseListener {
-        List<ParameterContext> m_inputParameters = new ArrayList<>();
-        ParameterContext m_outputParameter = null;
-        Map<String, String> m_sqlStmts = new TreeMap<>();
+        private List<ParameterContext> m_inputParameters = new ArrayList<>();
+        private ParameterContext m_outputParameter = null;
+        private Map<String, String> m_sqlStmts = new TreeMap<>();
 
-        List<Variable_declarationContext> m_constants = new ArrayList<>();
-        List<Variable_declarationContext> m_localVariables = new ArrayList<>();
+        private List<Variable_declarationContext> m_constants = new ArrayList<>();
+        private List<Variable_declarationContext> m_localVariables = new ArrayList<>();
 
-        Stack<Deque<ST>> m_stmtBlockStack = new Stack<>();
+        private Stack<List<ST>> m_stmtBlockStack = new Stack<>();
 
 
         String getOutputParameterName() {
             return m_outputParameter.parameter_name().getText();
-        }
-
-        @Override
-        public void enterCreate_procedure_body(Create_procedure_bodyContext ctx) {
-            m_stmtBlockStack.push(new ArrayDeque<>());
         }
 
         @Override
@@ -89,15 +82,39 @@ public class ProcedureEmitter {
             }
         }
 
+        // Could memo-ize this at some point...
+        private Set<String> getVisibleVariables() {
+            Set<String> vars = new HashSet<>();
+
+            for (ParameterContext paramCtx : m_inputParameters) {
+                vars.add(paramCtx.parameter_name().getText());
+            }
+
+            vars.add(m_outputParameter.parameter_name().getText());
+
+            for (Variable_declarationContext varCtx : m_constants) {
+                vars.add(varCtx.identifier().getText());
+            }
+
+            for (Variable_declarationContext varCtx : m_localVariables) {
+                vars.add(varCtx.identifier().getText());
+            }
+
+            return vars;
+        }
+
         @Override
         public void exitSql_statement(Sql_statementContext ctx) {
-            AnalyzedSqlStmt analyzedStmt = SqlAnalyzer.analyze(m_tokenStream, ctx);
+            AnalyzedSqlStmt analyzedStmt = SqlAnalyzer.analyze(m_tokenStream, getVisibleVariables(), ctx);
 
             String stmtName = "sql" + m_sqlStmts.size();
             m_sqlStmts.put(stmtName, analyzedStmt.getRewrittenStmt());
 
             ST queueSql = m_templateGroup.getInstanceOf("queue_sql_stmt");
             queueSql.add("stmt_name", stmtName);
+            for (String inputParam : analyzedStmt.getInputParams()) {
+                queueSql.add("params", inputParam);
+            }
             m_stmtBlockStack.peek().add(queueSql);
 
             ST execSql = m_templateGroup.getInstanceOf("execute_sql_stmt");
@@ -122,22 +139,13 @@ public class ProcedureEmitter {
 
         @Override
         public void enterSeq_of_statements(Seq_of_statementsContext ctx) {
-            m_stmtBlockStack.push(new ArrayDeque<>());
+            m_stmtBlockStack.push(new ArrayList<>());
         }
-
-        @Override
-        public void exitBody(BodyContext ctx) {
-            Deque<ST> stmts = m_stmtBlockStack.pop();
-            ST slist = m_templateGroup.getInstanceOf("slist");
-            slist.add("stmts", stmts);
-            m_stmtBlockStack.peek().add(slist);
-        }
-
 
         @Override
         public void exitIf_statement(If_statementContext ctx) {
             // For an if statement, get the seq_of_statements
-            Deque<ST> thenStmts = m_stmtBlockStack.pop();
+            List<ST> thenStmts = m_stmtBlockStack.pop();
             ST stmtList = m_templateGroup.getInstanceOf("slist");
             stmtList.add("stmts", thenStmts);
 
@@ -163,6 +171,14 @@ public class ProcedureEmitter {
                 varDecl.add("is_final", true);
 
             }
+
+            return varDecl;
+        }
+
+        private ST getVarDeclST(ParameterContext parCtx) {
+            ST varDecl = m_templateGroup.getInstanceOf("variable_decl");
+            varDecl.add("var_type", TypeTranslator.translate(parCtx.type_spec()));
+            varDecl.add("var_name", parCtx.parameter_name().getText());
 
             return varDecl;
         }
@@ -198,15 +214,28 @@ public class ProcedureEmitter {
             }
 
             assert(m_stmtBlockStack.size() == 1);
-            Deque<ST> methodStmts = m_stmtBlockStack.pop();
-            assert(methodStmts.size() == 1); // should be just one stmt list
+            // There is one ST for each statement
+            List<ST> methodStmts = m_stmtBlockStack.pop();
+
+            // Add the output variable declaration to the beginning
+            List<ST> allStmts = new ArrayList<>();
+            allStmts.add(getVarDeclST(m_outputParameter));
+            for (Variable_declarationContext varDeclCtx : m_localVariables) {
+                allStmts.add(getVarDeclST(varDeclCtx));
+            }
+
+            allStmts.add(m_templateGroup.getInstanceOf("empty_line"));
 
             // Add the final return statement
             ST returnStmt = m_templateGroup.getInstanceOf("return_stmt");
             returnStmt.add("ret_val", getOutputParameterName());
-            methodStmts.peek().add("stmts", returnStmt);
+            methodStmts.add(returnStmt);
 
-            runMethod.add("stmts", methodStmts);
+            allStmts.addAll(methodStmts);
+
+            ST slist = m_templateGroup.getInstanceOf("slist");
+            slist.add("stmts", allStmts);
+            runMethod.add("stmts", slist);
 
             for (Map.Entry<String, String> mapEntry : m_sqlStmts.entrySet()) {
                 ST sqlStmtST = m_templateGroup.getInstanceOf("sql_stmt");

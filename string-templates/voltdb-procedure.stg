@@ -28,6 +28,10 @@ variable_decl(visibility, is_static, is_final, var_type, var_name, init) ::= <<
 <if(visibility)><visibility> <endif><if(is_static)>static <endif><if(is_final)>final <endif><var_type> <var_name><if(init)> = <init><endif>;
 >>
 
+empty_line() ::= <<
+
+>>
+
 sql_stmt(name, java_string) ::= <<
 public final SQLStmt <name> = new SQLStmt(<java_string>);
 >>
@@ -42,12 +46,12 @@ slist(stmts) ::= <<
 }
 >>
 
-queue_sql_stmt(stmt_name) ::= <<
-voltQueueSql(<stmt_name>);
+queue_sql_stmt(stmt_name, params) ::= <<
+voltQueueSql(<stmt_name><if(params)>, <params: {param | <param>}; separator=", "><endif>);
 >>
 
 execute_sql_stmt(variable_name) ::= <<
-VoltTable <variable_name>[] = voltExecuteSQL();
+<variable_name> = voltExecuteSQL();
 >>
 
 assignment_stmt(lhs, rhs) ::= <<

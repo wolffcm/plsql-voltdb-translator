@@ -11,6 +11,7 @@ import plsql_parser.PlSqlParserBaseListener;
 
 public class ExpressionFormatter {
 
+    // This should use TokenStreamRewriter
     private static class ExpressionFormattingListener extends PlSqlParserBaseListener {
         private Stack<String> m_stack = new Stack<>();
 

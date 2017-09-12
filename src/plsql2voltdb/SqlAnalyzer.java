@@ -2,11 +2,13 @@ package plsql2voltdb;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 import org.antlr.v4.runtime.TokenStream;
 import org.antlr.v4.runtime.TokenStreamRewriter;
 import org.antlr.v4.runtime.tree.ParseTreeWalker;
 
+import plsql_parser.PlSqlParser.General_elementContext;
 import plsql_parser.PlSqlParser.Into_clauseContext;
 import plsql_parser.PlSqlParser.Sql_statementContext;
 import plsql_parser.PlSqlParser.Variable_nameContext;
@@ -19,8 +21,6 @@ public class SqlAnalyzer {
         private final String m_rewrittenStmt;
         private final List<String> m_inputParams;
         private final List<String> m_outputParams;
-
-
 
         AnalyzedSqlStmt(String rewrittenStmt, List<String> inputParams, List<String> outputParams) {
             m_rewrittenStmt = rewrittenStmt;
@@ -44,11 +44,15 @@ public class SqlAnalyzer {
     private static class SqlAnalyzingListener extends PlSqlParserBaseListener {
         private final TokenStreamRewriter m_rewriter;
         private final List<String> m_outputVariables = new ArrayList<>();
+        private final List<String> m_inputVariables = new ArrayList<>();
+        private final Set<String> m_visibleVariables;
 
-        SqlAnalyzingListener(TokenStreamRewriter tokenStreamRewriter) {
+        SqlAnalyzingListener(TokenStreamRewriter tokenStreamRewriter, Set<String> visibleVariables) {
             m_rewriter = tokenStreamRewriter;
+            m_visibleVariables = visibleVariables;
         }
 
+        // Remove the "INTO var1, var2, ..." clause
         @Override
         public void exitInto_clause(Into_clauseContext ctx) {
             m_rewriter.delete(ctx.getStart(), ctx.getStop());
@@ -58,8 +62,24 @@ public class SqlAnalyzer {
             }
         }
 
+        // Any references to local variables should get converted to "?"
+        @Override
+        public void exitGeneral_element(General_elementContext ctx) {
+            if (ctx.general_element_part().size() == 1) {
+                String id = ctx.getText();
+                if (m_visibleVariables.contains(id)) {
+                    m_rewriter.replace(ctx.getStart(), ctx.getStop(), "?");
+                    m_inputVariables.add(id);
+                }
+            }
+        }
+
         public List<String> getOutputVariables() {
             return m_outputVariables;
+        }
+
+        public List<String> getInputVariables() {
+            return m_inputVariables;
         }
     }
 
@@ -86,14 +106,14 @@ public class SqlAnalyzer {
         return String.join("\n", stringLines);
     }
 
-    public static AnalyzedSqlStmt analyze(TokenStream tokenStream, Sql_statementContext sqlStmtCtx) {
+    public static AnalyzedSqlStmt analyze(TokenStream tokenStream, Set<String> visibleVariables, Sql_statementContext sqlStmtCtx) {
         ParseTreeWalker walker = new ParseTreeWalker();
         TokenStreamRewriter rewriter = new TokenStreamRewriter(tokenStream);
-        SqlAnalyzingListener listener = new SqlAnalyzingListener(rewriter);
+        SqlAnalyzingListener listener = new SqlAnalyzingListener(rewriter, visibleVariables);
         walker.walk(listener, sqlStmtCtx);
 
         String rewrittenSql = formatAsJavaString(rewriter.getText(sqlStmtCtx.getSourceInterval()));
 
-        return new AnalyzedSqlStmt(rewrittenSql, null, listener.getOutputVariables());
+        return new AnalyzedSqlStmt(rewrittenSql, listener.getInputVariables(), listener.getOutputVariables());
     }
 }

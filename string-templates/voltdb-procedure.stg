@@ -51,7 +51,7 @@ slist(stmts) ::= <<
 >>
 
 queue_sql_stmt(stmt_name, params) ::= <<
-voltQueueSql(<stmt_name><if(params)>, <params: {param | <param>}; separator=", "><endif>);
+voltQueueSQL(<stmt_name><if(params)>, <params: {param | <param>}; separator=", "><endif>);
 >>
 
 execute_sql_stmt(variable_name) ::= <<
@@ -68,5 +68,10 @@ return <ret_val>;
 
 if_stmt(cond, then_block) ::= <<
 if (<cond>) <then_block>
+
+>>
+
+while_stmt(cond, body) ::= <<
+while (<cond>) <body>
 
 >>

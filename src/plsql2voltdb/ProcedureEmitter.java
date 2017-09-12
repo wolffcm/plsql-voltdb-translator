@@ -20,6 +20,7 @@ import plsql2voltdb.SqlAnalyzer.AnalyzedSqlStmt;
 import plsql_parser.PlSqlParser;
 import plsql_parser.PlSqlParser.Assignment_statementContext;
 import plsql_parser.PlSqlParser.If_statementContext;
+import plsql_parser.PlSqlParser.Loop_statementContext;
 import plsql_parser.PlSqlParser.ParameterContext;
 import plsql_parser.PlSqlParser.Return_statementContext;
 import plsql_parser.PlSqlParser.Seq_of_statementsContext;
@@ -105,7 +106,6 @@ public class ProcedureEmitter {
 
         @Override
         public void exitSql_statement(Sql_statementContext ctx) {
-            // Assumes that we have a SELECT .. INTO <var1>, <var2>, ...
             AnalyzedSqlStmt analyzedStmt = SqlAnalyzer.analyze(m_tokenStream, getVisibleVariables(), ctx);
 
             String stmtName = "sql" + m_sqlStmts.size();
@@ -127,14 +127,14 @@ public class ProcedureEmitter {
                 // TODO: optimize to a simple "asScalarLong()"
                 // if only one output of integral type.
                 ST advance = m_templateGroup.getInstanceOf("freeform_line");
-                advance.add("text", "vt.advanceRow()");
+                advance.add("text", "vt.advanceRow();");
                 m_stmtBlockStack.peek().add(advance);
                 int i = 0;
                 for (String var : analyzedStmt.getOutputParams()) {
                     ST assign = m_templateGroup.getInstanceOf("assignment_stmt");
                     assign.add("lhs", var);
                     // TODO: create the right getter method based on type.
-                    assign.add("rhs", "vt.getLong(" + i + ");");
+                    assign.add("rhs", "vt.getLong(" + i + ")");
                     m_stmtBlockStack.peek().add(assign);
                     ++i;
                 }
@@ -173,6 +173,33 @@ public class ProcedureEmitter {
             ifStmt.add("cond", cond);
             ifStmt.add("then_block", stmtList);
             m_stmtBlockStack.peek().add(ifStmt);
+        }
+
+        @Override
+        public void exitLoop_statement(Loop_statementContext ctx) {
+            /*
+             * FOR <row-var> IN (SELECT ...)
+             * LOOP
+             *     <stmts...>
+             * END LOOP;
+             *
+             *  -->
+             *
+             * voltQueueSQL(stmt);
+             * <row-var> = voltExecuteSQL()[0];
+             * while (<row-var>.advanceRow()) {
+             *     <stmts...>
+             * }
+             */
+
+            List<ST> loopBody = m_stmtBlockStack.pop();
+            ST stmtList = m_templateGroup.getInstanceOf("slist");
+            stmtList.add("stmts", loopBody);
+
+            ST whileStmt = m_templateGroup.getInstanceOf("while_stmt");
+            whileStmt.add("cond", "some_cond");
+            whileStmt.add("body", stmtList);
+            m_stmtBlockStack.peek().add(whileStmt);
         }
 
         private ST getVarDeclST(Variable_declarationContext varDeclCtx) {

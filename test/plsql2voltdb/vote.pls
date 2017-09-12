@@ -29,18 +29,18 @@ BEGIN
 	    INTO num_existing_votes
 	    FROM v_votes_by_phone_number
 	    WHERE phone_number = phone_number_in;
-    IF num_existing_votes >= max_votes_per_phone_numner_in THEN
+    IF num_existing_votes >= max_votes_per_phone_number_in THEN
         return_code_out := ERR_VOTER_OVER_VOTE_LIMIT;
         RETURN;
     END IF;
 
     -- Find the state of the voter based on area code
-    --FOR state_row IN
-    --    ( SELECT state FROM area_code_state
-    --      WHERE area_code = (phone_number_in / 10000000) )
-    --LOOP
-    --    state_abbrev := state;
-    --END LOOP;
+    FOR state_row IN
+        ( SELECT state FROM area_code_state
+          WHERE area_code = (phone_number_in / 10000000) )
+    LOOP
+        state_abbrev := state;
+    END LOOP;
 
     -- Finally, tally the vote
     INSERT INTO votes VALUES (phone_number_in, state_abbrev, contestant_number_in);

@@ -18,7 +18,9 @@
  */
 
 lexer grammar PlSqlLexer;
-
+@header {
+package plsql_parser;
+}
 
 
 
@@ -2331,7 +2333,7 @@ INTRODUCER
     ;*/
 //}
 
-SPACES: [ \t\r\n]+ -> skip;
+SPACES: [ \t\r\n]+ -> channel(HIDDEN);
     
 //{ Rule #504 <SIMPLE_LETTER> - simple_latin _letter was generalised into SIMPLE_LETTER
 //  Unicode is yet to be implemented - see NSF0
@@ -2371,11 +2373,9 @@ START_CMD
     ;
 
 //{ Rule #360 <NEWLINE>
-fragment
-NEWLINE: '\r'? '\n';
+NEWLINE: '\r'? '\n' -> channel(HIDDEN);
     
-fragment
-SPACE: [ \t];
+SPACE: [ \t] -> channel(HIDDEN);
 
 //{ Rule #442 <REGULAR_ID> additionally encapsulates a few STRING_LITs.
 //  Within testLiterals all reserved and non-reserved words are being resolved

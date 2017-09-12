@@ -13,8 +13,10 @@ import org.voltdb.VoltTable;
 <class_def>
 >>
 
-class_def(name, sql_stmts, methods) ::= <<
+class_def(name, constant_decls, sql_stmts, methods) ::= <<
 public class <name> extends VoltProcedure {
+
+    <constant_decls; separator="\n">
 
     <sql_stmts; separator="\n">
 
@@ -22,12 +24,16 @@ public class <name> extends VoltProcedure {
 }
 >>
 
-sql_stmt(name, sql_text) ::= <<
-public final SQLStmt <name> = "<sql_text>";
+variable_decl(visibility, is_static, is_final, var_type, var_name, init) ::= <<
+<if(visibility)><visibility> <endif><if(is_static)>static <endif><if(is_final)>final <endif><var_type> <var_name><if(init)> = <init><endif>;
+>>
+
+sql_stmt(name, java_string) ::= <<
+public final SQLStmt <name> = new SQLStmt(<java_string>);
 >>
 
 run_method(ret_type, args, stmts) ::= <<
-public long run(<args: {arg | <arg.type> <arg.name>}; separator=", ">) <stmts>
+public <ret_type> run(<args: {arg | <arg.type> <arg.name>}; separator=", ">) <stmts>
 >>
 
 slist(stmts) ::= <<

@@ -18,6 +18,9 @@
  */
 
 parser grammar PlSqlParser;
+@header {
+package plsql_parser;
+}
 
 options { tokenVocab=PlSqlLexer; }
 

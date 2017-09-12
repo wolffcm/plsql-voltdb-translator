@@ -13,8 +13,10 @@ DECLARE
   contestant_count   INTEGER;
 BEGIN
   -- Validate that this is a valid contestant
-  SELECT COUNT(*) INTO contestant_count
-    FROM contestants WHERE contestant_number = contestant_number_in;
+  SELECT COUNT(*) 
+    INTO contestant_count
+    FROM contestants 
+    WHERE contestant_number = contestant_number_in;
   IF contestant_count = 0 THEN
     return_code_out := ERR_INVALID_CONTESTANT;
     RETURN;

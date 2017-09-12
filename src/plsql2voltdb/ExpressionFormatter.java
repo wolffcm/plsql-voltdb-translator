@@ -1,54 +1,69 @@
 package plsql2voltdb;
 
-import java.util.Stack;
-
+import org.antlr.v4.runtime.TokenStream;
+import org.antlr.v4.runtime.TokenStreamRewriter;
 import org.antlr.v4.runtime.tree.ParseTreeWalker;
 
-import plsql_parser.PlSqlParser.AtomContext;
 import plsql_parser.PlSqlParser.ExpressionContext;
-import plsql_parser.PlSqlParser.Relational_expressionContext;
+import plsql_parser.PlSqlParser.Quoted_stringContext;
+import plsql_parser.PlSqlParser.Relational_operatorContext;
 import plsql_parser.PlSqlParserBaseListener;
 
 public class ExpressionFormatter {
 
     // This should use TokenStreamRewriter
     private static class ExpressionFormattingListener extends PlSqlParserBaseListener {
-        private Stack<String> m_stack = new Stack<>();
+        private final TokenStreamRewriter m_rewriter;
 
-        @Override
-        public void exitAtom(AtomContext ctx) {
-            m_stack.push(ctx.getText());
+        ExpressionFormattingListener(TokenStreamRewriter rewriter) {
+            m_rewriter = rewriter;
         }
 
         @Override
-        public void exitRelational_expression(Relational_expressionContext ctx) {
-            if (ctx.relational_operator() != null) {
-                assert(m_stack.size() >= 2);
-                String javaRelop = null;
-                String plsqlRelop = ctx.relational_operator().getText();
-                if ("=".equals(plsqlRelop)) {
-                    javaRelop = "==";
-                }
+        public void exitRelational_operator(Relational_operatorContext ctx) {
+            String newOp = null;
+            if ("=".equals(ctx.getText())) {
+                newOp = "==";
+            }
+            else if (ctx.not_equal_op() != null) {
+                newOp = "!=";
+            }
+            else if (ctx.less_than_or_equals_op() != null) {
+                // PL/SQL apparently allows whitespace between
+                // < and =
+                newOp = "<=";
+            }
+            else if (ctx.greater_than_or_equals_op() != null) {
+                newOp = ">=";
+            }
 
-                assert(javaRelop != null);
-                String rhs = m_stack.pop();
-                String lhs = m_stack.pop();
-                m_stack.push(lhs + " " + javaRelop + " " + rhs);
+            if (newOp != null) {
+                m_rewriter.replace(ctx.getStart(), ctx.getStop(), newOp);
             }
         }
 
-        public String formattedExpression() {
-            assert(m_stack.size() == 1);
-            return m_stack.pop();
+        @Override
+        public void exitQuoted_string(Quoted_stringContext ctx) {
+            String orig = ctx.getText();
+            int len = orig.length();
+
+            // For now, just replace delimiting ' with "
+            // To do this right we'd need to handle escaped embedded quotes, etc.
+            assert(orig.charAt(0) == '\'');
+            assert(orig.charAt(len - 1) == '\'');
+
+            String newString = "\"" + orig.substring(1, len - 1) + "\"";
+            m_rewriter.replace(ctx.getStart(), ctx.getStop(), newString);
         }
     }
 
-    public static String format(ExpressionContext condition) {
+    public static String format(TokenStream tokenStream, ExpressionContext condition) {
+        TokenStreamRewriter rewriter = new TokenStreamRewriter(tokenStream);
         ParseTreeWalker walker = new ParseTreeWalker();
-        ExpressionFormattingListener listener = new ExpressionFormattingListener();
+        ExpressionFormattingListener listener = new ExpressionFormattingListener(rewriter);
         walker.walk(listener, condition);
 
-        return listener.formattedExpression();
+        return rewriter.getText(condition.getSourceInterval());
     }
 
 }

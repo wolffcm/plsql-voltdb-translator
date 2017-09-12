@@ -32,6 +32,10 @@ empty_line() ::= <<
 
 >>
 
+freeform_line(text) ::= <<
+<text>
+>>
+
 sql_stmt(name, java_string) ::= <<
 public final SQLStmt <name> = new SQLStmt(<java_string>);
 >>
@@ -51,7 +55,7 @@ voltQueueSql(<stmt_name><if(params)>, <params: {param | <param>}; separator=", "
 >>
 
 execute_sql_stmt(variable_name) ::= <<
-<variable_name> = voltExecuteSQL();
+<variable_name> = voltExecuteSQL()[0];
 >>
 
 assignment_stmt(lhs, rhs) ::= <<

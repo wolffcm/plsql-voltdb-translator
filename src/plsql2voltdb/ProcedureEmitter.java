@@ -105,6 +105,7 @@ public class ProcedureEmitter {
 
         @Override
         public void exitSql_statement(Sql_statementContext ctx) {
+            // Assumes that we have a SELECT .. INTO <var1>, <var2>, ...
             AnalyzedSqlStmt analyzedStmt = SqlAnalyzer.analyze(m_tokenStream, getVisibleVariables(), ctx);
 
             String stmtName = "sql" + m_sqlStmts.size();
@@ -120,6 +121,24 @@ public class ProcedureEmitter {
             ST execSql = m_templateGroup.getInstanceOf("execute_sql_stmt");
             execSql.add("variable_name", "vt");
             m_stmtBlockStack.peek().add(execSql);
+
+            // Now assign the result of the SQL execution to the variables.
+            if (analyzedStmt.getOutputParams().size() > 0) {
+                // TODO: optimize to a simple "asScalarLong()"
+                // if only one output of integral type.
+                ST advance = m_templateGroup.getInstanceOf("freeform_line");
+                advance.add("text", "vt.advanceRow()");
+                m_stmtBlockStack.peek().add(advance);
+                int i = 0;
+                for (String var : analyzedStmt.getOutputParams()) {
+                    ST assign = m_templateGroup.getInstanceOf("assignment_stmt");
+                    assign.add("lhs", var);
+                    // TODO: create the right getter method based on type.
+                    assign.add("rhs", "vt.getLong(" + i + ");");
+                    m_stmtBlockStack.peek().add(assign);
+                    ++i;
+                }
+            }
         }
 
         @Override
@@ -150,7 +169,7 @@ public class ProcedureEmitter {
             stmtList.add("stmts", thenStmts);
 
             ST ifStmt = m_templateGroup.getInstanceOf("if_stmt");
-            String cond = ExpressionFormatter.format(ctx.condition().expression());
+            String cond = ExpressionFormatter.format(m_tokenStream, ctx.condition().expression());
             ifStmt.add("cond", cond);
             ifStmt.add("then_block", stmtList);
             m_stmtBlockStack.peek().add(ifStmt);
@@ -162,7 +181,7 @@ public class ProcedureEmitter {
             varDecl.add("var_name", varDeclCtx.identifier().getText());
 
             if (varDeclCtx.default_value_part() != null) {
-                varDecl.add("init", ExpressionFormatter.format(varDeclCtx.default_value_part().expression()));
+                varDecl.add("init", ExpressionFormatter.format(m_tokenStream, varDeclCtx.default_value_part().expression()));
             }
 
             if (varDeclCtx.CONSTANT() != null) {
@@ -181,6 +200,16 @@ public class ProcedureEmitter {
             varDecl.add("var_name", parCtx.parameter_name().getText());
 
             return varDecl;
+        }
+
+        private ST getVarDeclST(String javaType, String varName, String init) {
+            ST varDecl = m_templateGroup.getInstanceOf("variable_decl");
+            varDecl.add("var_type", javaType);
+            varDecl.add("var_name", varName);
+            varDecl.add("init", init);
+
+            return varDecl;
+
         }
 
         @Override
@@ -220,6 +249,7 @@ public class ProcedureEmitter {
             // Add the output variable declaration to the beginning
             List<ST> allStmts = new ArrayList<>();
             allStmts.add(getVarDeclST(m_outputParameter));
+            allStmts.add(getVarDeclST("VoltTable", "vt", null));
             for (Variable_declarationContext varDeclCtx : m_localVariables) {
                 allStmts.add(getVarDeclST(varDeclCtx));
             }
@@ -230,7 +260,6 @@ public class ProcedureEmitter {
             ST returnStmt = m_templateGroup.getInstanceOf("return_stmt");
             returnStmt.add("ret_val", getOutputParameterName());
             methodStmts.add(returnStmt);
-
             allStmts.addAll(methodStmts);
 
             ST slist = m_templateGroup.getInstanceOf("slist");

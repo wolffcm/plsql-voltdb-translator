@@ -27,7 +27,7 @@ public class PlSql2JavaTranslator {
             PlSqlParser parser = new PlSqlParser(tokens);
             ParseTree tree = parser.sql_script();
 
-            ProcedureEmitter emitter = new ProcedureEmitter(".", "my_pkg", tokens);
+            ProcedureEmitter emitter = new ProcedureEmitter(".", "voter", tokens);
             emitter.emit(tree);
         }
     }

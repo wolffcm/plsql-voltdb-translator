@@ -4,13 +4,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
+import org.antlr.v4.runtime.ParserRuleContext;
 import org.antlr.v4.runtime.TokenStream;
 import org.antlr.v4.runtime.TokenStreamRewriter;
 import org.antlr.v4.runtime.tree.ParseTreeWalker;
 
 import plsql_parser.PlSqlParser.General_elementContext;
 import plsql_parser.PlSqlParser.Into_clauseContext;
-import plsql_parser.PlSqlParser.Sql_statementContext;
 import plsql_parser.PlSqlParser.Variable_nameContext;
 import plsql_parser.PlSqlParserBaseListener;
 
@@ -106,7 +106,7 @@ public class SqlAnalyzer {
         return String.join("\n", stringLines);
     }
 
-    public static AnalyzedSqlStmt analyze(TokenStream tokenStream, Set<String> visibleVariables, Sql_statementContext sqlStmtCtx) {
+    public static AnalyzedSqlStmt analyze(TokenStream tokenStream, Set<String> visibleVariables, ParserRuleContext sqlStmtCtx) {
         ParseTreeWalker walker = new ParseTreeWalker();
         TokenStreamRewriter rewriter = new TokenStreamRewriter(tokenStream);
         SqlAnalyzingListener listener = new SqlAnalyzingListener(rewriter, visibleVariables);

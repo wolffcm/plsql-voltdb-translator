@@ -39,7 +39,7 @@ BEGIN
         ( SELECT state FROM area_code_state
           WHERE area_code = (phone_number_in / 10000000) )
     LOOP
-        state_abbrev := state;
+        state_abbrev := state_row.state;
     END LOOP;
 
     -- Finally, tally the vote

@@ -19,6 +19,7 @@ import org.stringtemplate.v4.STGroupFile;
 import plsql2voltdb.SqlAnalyzer.AnalyzedSqlStmt;
 import plsql_parser.PlSqlParser;
 import plsql_parser.PlSqlParser.Assignment_statementContext;
+import plsql_parser.PlSqlParser.Cursor_loop_paramContext;
 import plsql_parser.PlSqlParser.If_statementContext;
 import plsql_parser.PlSqlParser.Loop_statementContext;
 import plsql_parser.PlSqlParser.ParameterContext;
@@ -178,26 +179,52 @@ public class ProcedureEmitter {
         @Override
         public void exitLoop_statement(Loop_statementContext ctx) {
             /*
-             * FOR <row-var> IN (SELECT ...)
+             * FOR <row-var> IN (<sql-stmt>)
              * LOOP
-             *     <stmts...>
+             *     ... <row-var>.<field> ...
              * END LOOP;
              *
              *  -->
              *
-             * voltQueueSQL(stmt);
+             * VoltTable <row-var>;
+             * voltQueueSQL(<sql-stmt>);
              * <row-var> = voltExecuteSQL()[0];
              * while (<row-var>.advanceRow()) {
-             *     <stmts...>
+             *     ...<row-var>.get<String | Long>("<field>")...
              * }
              */
 
+            Cursor_loop_paramContext cursorLoopParam = ctx.cursor_loop_param();
+            assert(cursorLoopParam != null);
+
+            // Add the SQL statement to the statements used by the procedure
+            AnalyzedSqlStmt analyzedStmt = SqlAnalyzer.analyze(m_tokenStream, getVisibleVariables(), cursorLoopParam.select_statement());
+            String stmtName = "sql" + m_sqlStmts.size();
+            m_sqlStmts.put(stmtName, analyzedStmt.getRewrittenStmt());
+
+            // Pop the loop body off of the stack.
             List<ST> loopBody = m_stmtBlockStack.pop();
             ST stmtList = m_templateGroup.getInstanceOf("slist");
             stmtList.add("stmts", loopBody);
 
+            // VoltTable declaration
+            String rowVarName = cursorLoopParam.record_name().getText();
+            ST rowVarDecl = m_templateGroup.getInstanceOf("variable_decl");
+            rowVarDecl.add("var_type", "VoltTable");
+            rowVarDecl.add("var_name", rowVarName);
+            m_stmtBlockStack.peek().add(rowVarDecl);
+
+            ST queueSql = m_templateGroup.getInstanceOf("queue_sql_stmt");
+            queueSql.add("stmt_name", stmtName);
+            queueSql.add("params", analyzedStmt.getInputParams());
+            m_stmtBlockStack.peek().add(queueSql);
+
+            ST executeSql = m_templateGroup.getInstanceOf("execute_sql_stmt");
+            executeSql.add("variable_name", rowVarName);
+            m_stmtBlockStack.peek().add(executeSql);
+
             ST whileStmt = m_templateGroup.getInstanceOf("while_stmt");
-            whileStmt.add("cond", "some_cond");
+            whileStmt.add("cond", rowVarName + "." + "advanceRow()");
             whileStmt.add("body", stmtList);
             m_stmtBlockStack.peek().add(whileStmt);
         }

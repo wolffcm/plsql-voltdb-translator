@@ -1,5 +1,7 @@
 package plsql2voltdb;
 
+import org.voltdb.VoltType;
+
 import plsql_parser.PlSqlParser.Type_specContext;
 
 public class TypeTranslator {
@@ -34,6 +36,26 @@ public class TypeTranslator {
             if ("INTEGER".equalsIgnoreCase(plsqlType)) {
                 javaType = "long";
             }
+        }
+
+        return javaType;
+    }
+
+    public static String translate(VoltType type) {
+        String javaType = null;
+
+        switch (type) {
+        case BIGINT:
+        case SMALLINT:
+        case INTEGER:
+        case TINYINT:
+            javaType = "long";
+            break;
+        case STRING:
+            javaType = "String";
+            break;
+        default:
+            break;
         }
 
         return javaType;

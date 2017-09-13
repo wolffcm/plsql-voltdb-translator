@@ -7,6 +7,8 @@ import java.util.Map;
 import org.antlr.v4.runtime.TokenStream;
 import org.antlr.v4.runtime.TokenStreamRewriter;
 import org.antlr.v4.runtime.tree.ParseTreeWalker;
+import org.voltdb.plannodes.NodeSchema;
+import org.voltdb.plannodes.SchemaColumn;
 
 import plsql_parser.PlSqlParser.ExpressionContext;
 import plsql_parser.PlSqlParser.General_element_partContext;
@@ -77,7 +79,7 @@ public class ExpressionFormatter {
                     String rhsId = idCtxs.get(1).getText();
                     // TODO: compile the SQL statement to figure out
                     // the type of accessor to generate!
-                    String accessor = "getString(\"" + rhsId + "\")";
+                    String accessor = getVoltTableAccessor(v.getSchema(), rhsId);
                     m_rewriter.replace(idCtxs.get(1).getStart(), idCtxs.get(1).getStop(), accessor);
                 }
 
@@ -117,4 +119,41 @@ public class ExpressionFormatter {
         return rewriter.getText(condition.getSourceInterval());
     }
 
+    public static String getVoltTableAccessor(NodeSchema outputSchema, int index) {
+        String accessor = null;
+        SchemaColumn column = outputSchema.getColumns().get(index);
+        String javaType = TypeTranslator.translate(column.getType());
+        if ("long".equals(javaType)) {
+            accessor = "getLong(" + index + ")";
+        }
+        else if ("String".equals(javaType)) {
+            accessor = "getString(" + index + ")";
+        }
+
+        return accessor;
+    }
+
+    private static String getVoltTableAccessor(NodeSchema outputSchema, String colName) {
+        String accessor = null;
+        int index = 0;
+        // Could be duplicate column names.. in which case we would want to throw an error?
+        for (SchemaColumn col : outputSchema.getColumns()) {
+            if (col.getColumnAlias().equalsIgnoreCase(colName)) {
+                break;
+            }
+
+            ++index;
+        }
+
+        SchemaColumn column = outputSchema.getColumns().get(index);
+        String javaType = TypeTranslator.translate(column.getType());
+        if ("long".equals(javaType)) {
+            accessor = "getLong(" + index + ")";
+        }
+        else if ("String".equals(javaType)) {
+            accessor = "getString(" + index + ")";
+        }
+
+        return accessor;
+    }
 }

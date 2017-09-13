@@ -51,6 +51,16 @@ public class SqlAnalyzer {
         public NodeSchema getOutputSchema() {
             return m_outputSchema;
         }
+
+        public boolean producesSingleIntegerColumn() {
+
+            if (m_outputSchema.size() != 1) {
+                return false;
+            }
+
+            String outputJavaType = TypeTranslator.translate(m_outputSchema.getColumns().get(0).getType());
+            return "long".equals(outputJavaType);
+        }
     }
 
     private static class SqlAnalyzingListener extends PlSqlParserBaseListener {

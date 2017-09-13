@@ -2,8 +2,9 @@
 src_file(header_comment, package, imported_pkgs, class_def) ::= <<
 <header_comment>
 
-package <package>;
+<if(package)>package <package>;
 
+<endif>
 import org.voltdb.SQLStmt;
 import org.voltdb.VoltProcedure;
 import org.voltdb.VoltTable;
@@ -54,8 +55,8 @@ queue_sql_stmt(stmt_name, params) ::= <<
 voltQueueSQL(<stmt_name><if(params)>, <params: {param | <param>}; separator=", "><endif>);
 >>
 
-execute_sql_stmt(variable_name) ::= <<
-<variable_name> = voltExecuteSQL()[0];
+execute_sql_stmt(var_name, post_text) ::= <<
+<if(var_name)><var_name> = <endif>voltExecuteSQL()<post_text>;
 >>
 
 assignment_stmt(lhs, rhs) ::= <<

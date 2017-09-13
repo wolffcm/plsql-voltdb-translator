@@ -29,12 +29,14 @@ import plsql_parser.PlSqlParser.Variable_declarationContext;
 import plsql_parser.PlSqlParserBaseListener;
 
 public class ProcedureEmitter {
+    private final SqlAnalyzer m_analyzer;
     private final String m_package;
     private final String m_targetDirectory;
     private final STGroupFile m_templateGroup = new STGroupFile("string-templates/voltdb-procedure.stg");
     private final TokenStream m_tokenStream;
 
-    public ProcedureEmitter(String targetDirectory, String packageName, TokenStream tokenStream) {
+    public ProcedureEmitter(SqlAnalyzer analyzer, String targetDirectory, String packageName, TokenStream tokenStream) {
+        m_analyzer = analyzer;
         m_package = packageName;
         m_targetDirectory = targetDirectory;
         m_tokenStream = tokenStream;
@@ -117,10 +119,10 @@ public class ProcedureEmitter {
         @Override
         public void exitSql_statement(Sql_statementContext ctx) {
             Map<String, Var> visibleVars = getVisibleVariables();
-            AnalyzedSqlStmt analyzedStmt = SqlAnalyzer.analyze(m_tokenStream, getVisibleVariables(), ctx);
+            AnalyzedSqlStmt analyzedStmt = m_analyzer.analyze(m_tokenStream, getVisibleVariables(), ctx);
 
             String stmtName = "sql" + m_sqlStmts.size();
-            m_sqlStmts.put(stmtName, analyzedStmt.getRewrittenStmt());
+            m_sqlStmts.put(stmtName, ExpressionFormatter.formatAsJavaString(analyzedStmt.getRewrittenStmt()));
 
             ST queueSql = m_templateGroup.getInstanceOf("queue_sql_stmt");
             queueSql.add("stmt_name", stmtName);
@@ -234,9 +236,9 @@ public class ProcedureEmitter {
             assert(cursorLoopParam != null);
 
             // Add the SQL statement to the statements used by the procedure
-            AnalyzedSqlStmt analyzedStmt = SqlAnalyzer.analyze(m_tokenStream, getVisibleVariables(), cursorLoopParam.select_statement());
+            AnalyzedSqlStmt analyzedStmt = m_analyzer.analyze(m_tokenStream, getVisibleVariables(), cursorLoopParam.select_statement());
             String stmtName = "sql" + m_sqlStmts.size();
-            m_sqlStmts.put(stmtName, analyzedStmt.getRewrittenStmt());
+            m_sqlStmts.put(stmtName, ExpressionFormatter.formatAsJavaString(analyzedStmt.getRewrittenStmt()));
 
             // Pop the loop body off of the stack.
             List<ST> loopBody = m_stmtBlockStack.pop();

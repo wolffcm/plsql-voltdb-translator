@@ -1,5 +1,6 @@
 package plsql2voltdb;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -82,6 +83,29 @@ public class ExpressionFormatter {
 
             }
         }
+    }
+
+    public static String formatAsJavaString(String rawString) {
+        String lines[] = rawString.split("\n");
+
+        String concat = "";
+        List<String> stringLines = new ArrayList<>();
+        for (int i = 0; i < lines.length; ++i) {
+            String line = lines[i];
+            line = line.trim();
+            if (! line.isEmpty()) {
+                line = line.replaceAll("\"", "\\\"");
+                String stringifiedLine = concat + "\"" + line;
+                if (i != lines.length - 1) {
+                    stringifiedLine += " \"";
+                } else {
+                    stringifiedLine += "\"";
+                }
+                stringLines.add(stringifiedLine);
+                concat = "    + ";
+            }
+        }
+        return String.join("\n", stringLines);
     }
 
     public static String format(TokenStream tokenStream, Map<String, Var> vars, ExpressionContext condition) {

@@ -8,6 +8,7 @@ import org.antlr.v4.runtime.ParserRuleContext;
 import org.antlr.v4.runtime.TokenStream;
 import org.antlr.v4.runtime.TokenStreamRewriter;
 import org.antlr.v4.runtime.tree.ParseTreeWalker;
+import org.voltdb.plannodes.NodeSchema;
 
 import plsql_parser.PlSqlParser.General_elementContext;
 import plsql_parser.PlSqlParser.Into_clauseContext;
@@ -16,16 +17,23 @@ import plsql_parser.PlSqlParserBaseListener;
 
 public class SqlAnalyzer {
 
+    private final StandAlonePlanner m_planner;
+
+    SqlAnalyzer(String ddlPath) throws Exception {
+        m_planner = new StandAlonePlanner(ddlPath);
+    }
 
     public static class AnalyzedSqlStmt {
         private final String m_rewrittenStmt;
         private final List<String> m_inputParams;
         private final List<String> m_outputParams;
+        private final NodeSchema m_outputSchema;
 
-        AnalyzedSqlStmt(String rewrittenStmt, List<String> inputParams, List<String> outputParams) {
+        AnalyzedSqlStmt(String rewrittenStmt, List<String> inputParams, List<String> outputParams, NodeSchema outputSchema) {
             m_rewrittenStmt = rewrittenStmt;
             m_inputParams = inputParams;
             m_outputParams = outputParams;
+            m_outputSchema = outputSchema;
         }
 
         public String getRewrittenStmt() {
@@ -38,6 +46,10 @@ public class SqlAnalyzer {
 
         public List<String> getOutputParams() {
             return m_outputParams;
+        }
+
+        public NodeSchema getOutputSchema() {
+            return m_outputSchema;
         }
     }
 
@@ -83,37 +95,15 @@ public class SqlAnalyzer {
         }
     }
 
-    private static String formatAsJavaString(String text) {
-        String lines[] = text.split("\n");
-
-        String concat = "";
-        List<String> stringLines = new ArrayList<>();
-        for (int i = 0; i < lines.length; ++i) {
-            String line = lines[i];
-            line = line.trim();
-            if (! line.isEmpty()) {
-                line = line.replaceAll("\"", "\\\"");
-                String stringifiedLine = concat + "\"" + line;
-                if (i != lines.length - 1) {
-                    stringifiedLine += " \"";
-                } else {
-                    stringifiedLine += "\"";
-                }
-                stringLines.add(stringifiedLine);
-                concat = "    + ";
-            }
-        }
-        return String.join("\n", stringLines);
-    }
-
-    public static AnalyzedSqlStmt analyze(TokenStream tokenStream, Map<String, Var> visibleVariables, ParserRuleContext sqlStmtCtx) {
+    public AnalyzedSqlStmt analyze(TokenStream tokenStream, Map<String, Var> visibleVariables, ParserRuleContext sqlStmtCtx) {
         ParseTreeWalker walker = new ParseTreeWalker();
         TokenStreamRewriter rewriter = new TokenStreamRewriter(tokenStream);
         SqlAnalyzingListener listener = new SqlAnalyzingListener(rewriter, visibleVariables);
         walker.walk(listener, sqlStmtCtx);
 
-        String rewrittenSql = formatAsJavaString(rewriter.getText(sqlStmtCtx.getSourceInterval()));
+        String rewrittenSql = rewriter.getText(sqlStmtCtx.getSourceInterval());
+        NodeSchema schema = m_planner.planAndGetOutputSchema(rewrittenSql);
 
-        return new AnalyzedSqlStmt(rewrittenSql, listener.getInputVariables(), listener.getOutputVariables());
+        return new AnalyzedSqlStmt(rewrittenSql, listener.getInputVariables(), listener.getOutputVariables(), schema);
     }
 }

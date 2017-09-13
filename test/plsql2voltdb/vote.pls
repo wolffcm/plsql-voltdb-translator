@@ -11,7 +11,7 @@ DECLARE
 
     contestant_count   INTEGER;
     num_existing_votes INTEGER;
-    state_abbrev       VARCHAR2(2) DEFAULT 'XX';
+    state_abbrev       votes.state%TYPE DEFAULT 'XX';
 BEGIN
     -- Validate that this is a valid contestant
     SELECT COUNT(*)
@@ -41,7 +41,7 @@ BEGIN
         state_abbrev := state_row.state;
     END LOOP;
 
-    -- Finally, tally the vote
+    -- Finally, insert the vote
     INSERT INTO votes VALUES (phone_number_in, state_abbrev, contestant_number_in);
 
     return_code_out := VOTE_SUCCESSFUL;

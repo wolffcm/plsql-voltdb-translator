@@ -2,6 +2,7 @@ package plsql2voltdb;
 
 import org.voltdb.VoltType;
 
+import plsql_parser.PlSqlParser.Type_nameContext;
 import plsql_parser.PlSqlParser.Type_specContext;
 
 public class TypeTranslator {
@@ -16,7 +17,18 @@ public class TypeTranslator {
             "STRING"
     };
 
-    public static String translate(Type_specContext type_spec) {
+    private static String translateFromColumn(SqlAnalyzer analyzer, Type_specContext type_spec) {
+        Type_nameContext typeNameContext = type_spec.type_name();
+
+        VoltType colType = analyzer.getTypeForColumn(typeNameContext);
+        return translate(colType);
+    }
+
+    public static String translate(SqlAnalyzer analyzer, Type_specContext type_spec) {
+        if (type_spec.PERCENT_TYPE() != null) {
+            return translateFromColumn(analyzer, type_spec);
+        }
+
         if (type_spec.datatype() == null
                 || type_spec.datatype().native_datatype_element() == null) {
             return null;

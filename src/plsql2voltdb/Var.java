@@ -10,15 +10,15 @@ public class Var {
     private final String m_name;
     private final NodeSchema m_schema;
 
-    public static Var fromPlSql(ParameterContext ctx) {
+    public static Var fromPlSql(SqlAnalyzer analyzer, ParameterContext ctx) {
         String name = ctx.parameter_name().getText();
-        String javaType = TypeTranslator.translate(ctx.type_spec());
+        String javaType = TypeTranslator.translate(analyzer, ctx.type_spec());
         return new Var(javaType, name);
     }
 
-    public static Var fromPlSql(Variable_declarationContext ctx) {
+    public static Var fromPlSql(SqlAnalyzer analyzer, Variable_declarationContext ctx) {
         String name = ctx.identifier().getText();
-        String javaType = TypeTranslator.translate(ctx.type_spec());
+        String javaType = TypeTranslator.translate(analyzer, ctx.type_spec());
         return new Var(javaType, name);
     }
 

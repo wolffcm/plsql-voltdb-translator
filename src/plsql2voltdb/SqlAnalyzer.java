@@ -8,10 +8,13 @@ import org.antlr.v4.runtime.ParserRuleContext;
 import org.antlr.v4.runtime.TokenStream;
 import org.antlr.v4.runtime.TokenStreamRewriter;
 import org.antlr.v4.runtime.tree.ParseTreeWalker;
+import org.voltdb.VoltType;
 import org.voltdb.plannodes.NodeSchema;
 
 import plsql_parser.PlSqlParser.General_elementContext;
+import plsql_parser.PlSqlParser.Id_expressionContext;
 import plsql_parser.PlSqlParser.Into_clauseContext;
+import plsql_parser.PlSqlParser.Type_nameContext;
 import plsql_parser.PlSqlParser.Variable_nameContext;
 import plsql_parser.PlSqlParserBaseListener;
 
@@ -28,12 +31,19 @@ public class SqlAnalyzer {
         private final List<String> m_inputParams;
         private final List<String> m_outputParams;
         private final NodeSchema m_outputSchema;
+        private final String m_prefix;
 
-        AnalyzedSqlStmt(String rewrittenStmt, List<String> inputParams, List<String> outputParams, NodeSchema outputSchema) {
+        AnalyzedSqlStmt(
+                String rewrittenStmt,
+                List<String> inputParams,
+                List<String> outputParams,
+                NodeSchema outputSchema,
+                String prefix) {
             m_rewrittenStmt = rewrittenStmt;
             m_inputParams = inputParams;
             m_outputParams = outputParams;
             m_outputSchema = outputSchema;
+            m_prefix = prefix;
         }
 
         public String getRewrittenStmt() {
@@ -60,6 +70,10 @@ public class SqlAnalyzer {
 
             String outputJavaType = TypeTranslator.translate(m_outputSchema.getColumns().get(0).getType());
             return "long".equals(outputJavaType);
+        }
+
+        public String getNamePrefix() {
+            return m_prefix;
         }
     }
 
@@ -114,6 +128,37 @@ public class SqlAnalyzer {
         String rewrittenSql = rewriter.getText(sqlStmtCtx.getSourceInterval());
         NodeSchema schema = m_planner.planAndGetOutputSchema(rewrittenSql);
 
-        return new AnalyzedSqlStmt(rewrittenSql, listener.getInputVariables(), listener.getOutputVariables(), schema);
+        String prefix = getPrefixForName(tokenStream, sqlStmtCtx);
+        return new AnalyzedSqlStmt(
+                rewrittenSql,
+                listener.getInputVariables(),
+                listener.getOutputVariables(),
+                schema,
+                prefix);
+    }
+
+    private String getPrefixForName(TokenStream tokenStream, ParserRuleContext sqlStmtCtx) {
+        String prefix = "sql";
+        int start = sqlStmtCtx.getStart().getTokenIndex();
+        int stop = sqlStmtCtx.getStop().getTokenIndex();
+        for (int i = start; i <= stop; ++i) {
+            // take the first token that is not a parenthesis
+            String tok = tokenStream.get(i).getText();
+            if (tok.equals("(")) {
+                continue;
+            }
+
+            prefix = tok.toLowerCase();
+        }
+        return prefix;
+    }
+
+    public VoltType getTypeForColumn(Type_nameContext typeNameContext) {
+        List<Id_expressionContext> ids = typeNameContext.id_expression();
+        if (ids.size() != 2) {
+            return null;
+        }
+
+        return m_planner.getTypeForColumn(ids.get(0).getText(), ids.get(1).getText());
     }
 }

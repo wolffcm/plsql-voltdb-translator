@@ -7,6 +7,9 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+import org.voltdb.VoltType;
+import org.voltdb.catalog.Column;
+import org.voltdb.catalog.Table;
 import org.voltdb.parser.SQLLexer;
 import org.voltdb.parser.SQLParser;
 import org.voltdb.parser.SQLParser.FileInfo;
@@ -69,6 +72,12 @@ public class StandAlonePlanner {
     public NodeSchema planAndGetOutputSchema(String sql) {
         CompiledPlan plan = m_aide.compileAdHocPlan(sql);
         return plan.rootPlanGraph.getOutputSchema();
+    }
+
+    public VoltType getTypeForColumn(String tableName, String columnName) {
+        Table tbl = m_aide.getDatabase().getTables().get(tableName);
+        Column col = tbl.getColumns().get(columnName);
+        return VoltType.get((byte)col.getType());
     }
 
 }

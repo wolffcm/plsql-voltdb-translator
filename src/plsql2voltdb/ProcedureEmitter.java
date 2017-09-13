@@ -73,20 +73,20 @@ public class ProcedureEmitter {
             Map<String, Var> vars = new HashMap<>();
 
             for (ParameterContext paramCtx : m_inputParameters) {
-                Var v = Var.fromPlSql(paramCtx);
+                Var v = Var.fromPlSql(m_analyzer, paramCtx);
                 vars.put(v.getName(), v);
             }
 
-            Var outputVar = Var.fromPlSql(m_outputParameter);
+            Var outputVar = Var.fromPlSql(m_analyzer, m_outputParameter);
             vars.put(outputVar.getName(), outputVar);
 
             for (Variable_declarationContext varCtx : m_constants) {
-                Var v = Var.fromPlSql(varCtx);
+                Var v = Var.fromPlSql(m_analyzer, varCtx);
                 vars.put(v.getName(), v);
             }
 
             for (Variable_declarationContext varCtx : m_localVariables) {
-                Var v = Var.fromPlSql(varCtx);
+                Var v = Var.fromPlSql(m_analyzer, varCtx);
                 vars.put(v.getName(), v);
             }
 
@@ -219,11 +219,6 @@ public class ProcedureEmitter {
                     commentST.add("text", commentText);
                     m_stmtBlockStack.peek().add(commentST);
                 }
-                else {
-                    ST commentST = m_templateGroup.getInstanceOf("freeform_line");
-                    commentST.add("text", "*** --> " + commentText + " <-- ***");
-                    m_stmtBlockStack.peek().add(commentST);
-                }
             }
             m_lastStatementTokenOffset = ctx.getStop().getTokenIndex() + 2;
         }
@@ -323,7 +318,7 @@ public class ProcedureEmitter {
 
         private ST getVarDeclST(Variable_declarationContext varDeclCtx) {
             ST varDecl = m_templateGroup.getInstanceOf("variable_decl");
-            varDecl.add("var_type", TypeTranslator.translate(varDeclCtx.type_spec()));
+            varDecl.add("var_type", TypeTranslator.translate(m_analyzer, varDeclCtx.type_spec()));
             varDecl.add("var_name", varDeclCtx.identifier().getText());
 
             if (varDeclCtx.default_value_part() != null) {
@@ -342,7 +337,7 @@ public class ProcedureEmitter {
 
         private ST getVarDeclST(ParameterContext parCtx) {
             ST varDecl = m_templateGroup.getInstanceOf("variable_decl");
-            varDecl.add("var_type", TypeTranslator.translate(parCtx.type_spec()));
+            varDecl.add("var_type", TypeTranslator.translate(m_analyzer, parCtx.type_spec()));
             varDecl.add("var_name", parCtx.parameter_name().getText());
 
             return varDecl;
@@ -381,9 +376,9 @@ public class ProcedureEmitter {
             }
 
             ST runMethod = m_templateGroup.getInstanceOf("run_method");
-            runMethod.add("ret_type", TypeTranslator.translate(m_outputParameter.type_spec()));
+            runMethod.add("ret_type", TypeTranslator.translate(m_analyzer, m_outputParameter.type_spec()));
             for (ParameterContext param : m_inputParameters) {
-                String javaType = TypeTranslator.translate(param.type_spec());
+                String javaType = TypeTranslator.translate(m_analyzer, param.type_spec());
                 String paramName = param.parameter_name().getText();
                 runMethod.addAggr("args.{ type, name }", javaType, paramName);
             }

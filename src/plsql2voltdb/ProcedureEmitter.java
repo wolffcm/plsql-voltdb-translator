@@ -10,6 +10,7 @@ import java.util.Stack;
 import java.util.TreeMap;
 
 import org.antlr.v4.runtime.TokenStream;
+import org.antlr.v4.runtime.misc.Interval;
 import org.antlr.v4.runtime.tree.ParseTree;
 import org.antlr.v4.runtime.tree.ParseTreeWalker;
 import org.stringtemplate.v4.ST;
@@ -18,6 +19,7 @@ import org.stringtemplate.v4.STGroupFile;
 import plsql2voltdb.SqlAnalyzer.AnalyzedSqlStmt;
 import plsql_parser.PlSqlParser;
 import plsql_parser.PlSqlParser.Assignment_statementContext;
+import plsql_parser.PlSqlParser.BodyContext;
 import plsql_parser.PlSqlParser.Cursor_loop_paramContext;
 import plsql_parser.PlSqlParser.If_statementContext;
 import plsql_parser.PlSqlParser.Loop_statementContext;
@@ -25,6 +27,7 @@ import plsql_parser.PlSqlParser.ParameterContext;
 import plsql_parser.PlSqlParser.Return_statementContext;
 import plsql_parser.PlSqlParser.Seq_of_statementsContext;
 import plsql_parser.PlSqlParser.Sql_statementContext;
+import plsql_parser.PlSqlParser.StatementContext;
 import plsql_parser.PlSqlParser.Variable_declarationContext;
 import plsql_parser.PlSqlParserBaseListener;
 
@@ -62,6 +65,8 @@ public class ProcedureEmitter {
         private Stack<Var> m_loopScopeVars = new Stack<>();
 
         private Stack<List<ST>> m_stmtBlockStack = new Stack<>();
+
+        private int m_lastStatementTokenOffset = 0;
 
         // Could memo-ize this at some point...
         private Map<String, Var> getVisibleVariables() {
@@ -190,8 +195,42 @@ public class ProcedureEmitter {
         }
 
         @Override
+        public void enterBody(BodyContext ctx) {
+            m_lastStatementTokenOffset = ctx.getStart().getTokenIndex() + 1;
+        }
+
+        @Override
         public void enterSeq_of_statements(Seq_of_statementsContext ctx) {
             m_stmtBlockStack.push(new ArrayList<>());
+        }
+
+        @Override
+        public void enterStatement(StatementContext ctx) {
+            // Print out any comments that might be between this statement and the last.
+            int lastTokenOffset = ctx.getStart().getTokenIndex() - 1;
+            if (lastTokenOffset > m_lastStatementTokenOffset) {
+                Interval interval = new Interval(m_lastStatementTokenOffset, lastTokenOffset);
+                String commentText = m_tokenStream.getText(interval).trim();
+                if (commentText.startsWith("--")) {
+                    commentText = commentText.substring(2);
+                    commentText = commentText.trim();
+                    commentText = "// " + commentText;
+                    ST commentST = m_templateGroup.getInstanceOf("freeform_line");
+                    commentST.add("text", commentText);
+                    m_stmtBlockStack.peek().add(commentST);
+                }
+                else {
+                    ST commentST = m_templateGroup.getInstanceOf("freeform_line");
+                    commentST.add("text", "*** --> " + commentText + " <-- ***");
+                    m_stmtBlockStack.peek().add(commentST);
+                }
+            }
+            m_lastStatementTokenOffset = ctx.getStop().getTokenIndex() + 2;
+        }
+
+        @Override
+        public void exitStatement(StatementContext ctx) {
+            m_lastStatementTokenOffset = ctx.getStop().getTokenIndex() + 2;
         }
 
         @Override

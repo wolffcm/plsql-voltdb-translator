@@ -90,7 +90,10 @@ public class PlSql2JavaTranslator {
             ParseTree tree = parser.sql_script();
 
             ProcedureEmitter emitter = new ProcedureEmitter(analyzer, targetDirectory, targetPackage, tokens);
-            emitter.emit(tree);
+            int rc = emitter.emit(tree);
+            if (rc != 0) {
+                System.exit(rc);
+            }
         }
     }
 }

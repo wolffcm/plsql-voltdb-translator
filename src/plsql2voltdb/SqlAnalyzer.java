@@ -149,6 +149,7 @@ public class SqlAnalyzer {
             }
 
             prefix = tok.toLowerCase();
+            break;
         }
         return prefix;
     }

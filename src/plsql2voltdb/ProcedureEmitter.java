@@ -1,13 +1,19 @@
 package plsql2voltdb;
 
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Stack;
-import java.util.TreeMap;
 
 import org.antlr.v4.runtime.TokenStream;
 import org.antlr.v4.runtime.misc.Interval;
@@ -38,6 +44,8 @@ public class ProcedureEmitter {
     private final String m_targetDirectory;
     private final TokenStream m_tokenStream;
 
+    private final Map<String, String> m_generatedFiles = new HashMap<>();
+
     public ProcedureEmitter(SqlAnalyzer analyzer, String targetDirectory, String packageName, TokenStream tokenStream) {
         String tgPath = ProcedureEmitter.class.getResource("voltdb-procedure.stg").getPath();
         m_templateGroup = new STGroupFile(tgPath);
@@ -55,7 +63,8 @@ public class ProcedureEmitter {
     }
 
     private class EmittingListener extends PlSqlParserBaseListener {
-        private Map<String, String> m_sqlStmts = new TreeMap<>();
+        private Map<String, Integer> m_sqlStmtNameMap = new HashMap<>();
+        private Map<String, String> m_sqlStmts = new LinkedHashMap<>();
         private Map<Cursor_loop_paramContext, AnalyzedSqlStmt> m_cursorLoopMap = new HashMap<>();
 
         private List<ParameterContext> m_inputParameters = new ArrayList<>();
@@ -126,11 +135,27 @@ public class ProcedureEmitter {
             }
         }
 
+        private String getSqlStmtName(AnalyzedSqlStmt stmt) {
+            String prefix = stmt.getNamePrefix();
+            Integer prefixCount = m_sqlStmtNameMap.get(prefix);
+            String name = prefix;
+            if (prefixCount != null) {
+                name += prefixCount.toString();
+                m_sqlStmtNameMap.put(prefix, prefixCount.intValue() + 1);
+            }
+            else {
+                name += "0";
+                m_sqlStmtNameMap.put(prefix, 1);
+            }
+
+            return name;
+        }
+
         @Override
         public void exitSql_statement(Sql_statementContext ctx) {
             AnalyzedSqlStmt analyzedStmt = m_analyzer.analyze(m_tokenStream, getVisibleVariables(), ctx);
 
-            String stmtName = "sql" + m_sqlStmts.size();
+            String stmtName = getSqlStmtName(analyzedStmt);
             m_sqlStmts.put(stmtName, ExpressionFormatter.formatAsJavaString(analyzedStmt.getRewrittenStmt()));
 
             ST queueSql = m_templateGroup.getInstanceOf("queue_sql_stmt");
@@ -283,7 +308,7 @@ public class ProcedureEmitter {
             // Add the SQL statement to the statements used by the procedure
             AnalyzedSqlStmt analyzedStmt = m_cursorLoopMap.get(cursorLoopParam);
             assert (analyzedStmt != null);
-            String stmtName = "sql" + m_sqlStmts.size();
+            String stmtName = getSqlStmtName(analyzedStmt);
             m_sqlStmts.put(stmtName, ExpressionFormatter.formatAsJavaString(analyzedStmt.getRewrittenStmt()));
 
             // Pop the loop body off of the stack.
@@ -417,16 +442,38 @@ public class ProcedureEmitter {
             classDef.add("methods", runMethod);
 
             srcFileST.add("class_def", classDef);
-            System.out.println("-------- " + m_targetDirectory + "/"
-                    + m_package + "/" + className + ".java");
             String srcFile = srcFileST.render();
-            System.out.println(srcFile);
+            m_generatedFiles.put(className + ".java", srcFile);
         }
 
     }
-    public void emit(ParseTree tree) {
+    public int emit(ParseTree tree) {
         ParseTreeWalker walker = new ParseTreeWalker();
         EmittingListener listener = new EmittingListener();
         walker.walk(listener, tree);
+
+        Path pkgDir = Paths.get(m_targetDirectory, m_package);
+        if (! Files.exists(pkgDir)) {
+            try {
+                Files.createDirectories(pkgDir);
+            }
+            catch (IOException ioExc) {
+                System.err.println("Could not create package directory: " + ioExc.getMessage());
+            }
+        }
+
+        for (Entry<String, String> entry : m_generatedFiles.entrySet()) {
+            Path javaSrc = Paths.get(m_targetDirectory, m_package, entry.getKey());
+            System.out.println("Writing file " + javaSrc);
+            try (PrintWriter out = new PrintWriter(javaSrc.toString())) {
+                out.print(entry.getValue());
+            }
+            catch (Exception exc) {
+                System.err.println("Could not write source file: " + exc.getMessage());
+                return 1;
+            }
+        }
+
+        return 0;
     }
 }

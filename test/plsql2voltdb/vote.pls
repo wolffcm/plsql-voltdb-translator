@@ -24,10 +24,10 @@ BEGIN
     END IF;
 
     -- Check to see if this voter is over the vote limit
-	SELECT SUM(num_votes)
-	    INTO num_existing_votes
-	    FROM v_votes_by_phone_number
-	    WHERE phone_number = phone_number_in;
+    SELECT SUM(num_votes)
+        INTO num_existing_votes
+        FROM v_votes_by_phone_number
+        WHERE phone_number = phone_number_in;
     IF num_existing_votes >= max_votes_per_phone_number_in THEN
         return_code_out := ERR_VOTER_OVER_VOTE_LIMIT;
         RETURN;

@@ -2,6 +2,7 @@ package plsql2voltdb;
 
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -47,8 +48,8 @@ public class ProcedureEmitter {
     private final Map<String, String> m_generatedFiles = new HashMap<>();
 
     public ProcedureEmitter(SqlAnalyzer analyzer, String targetDirectory, String packageName, TokenStream tokenStream) {
-        String tgPath = ProcedureEmitter.class.getResource("voltdb-procedure.stg").getPath();
-        m_templateGroup = new STGroupFile(tgPath);
+        URL groupFile = ProcedureEmitter.class.getResource("voltdb-procedure.stg");
+        m_templateGroup = new STGroupFile(groupFile, "UTF-8", '<', '>');
 
         m_analyzer = analyzer;
         m_package = packageName;
